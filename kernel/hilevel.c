@@ -16,12 +16,14 @@
  *   can be created, and neither is able to terminate.
  */
 
-pcb_t pcb[ 3 ]; int executing = 0;
+pcb_t pcb[ 3 ]; // By changing the number you can vary the number of programs being run (1.b)
+int n = sizeof(pcb)/sizeof(pcb[0]); // Get the size of pcb (divide the whole array b the size of each element)
+int executing = 0;
 
 void scheduler( ctx_t* ctx ) {
 
     // Round robin scheduler - starts at 0 and increases pcb index by 1 using executingNext
-    int executingNext = (executing + 1)%3;
+    int executingNext = (executing + 1)%n;
     memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve P_1
     pcb[ executing ].status = STATUS_READY;                // update   P_1 status
     memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) ); // restore  P_2
