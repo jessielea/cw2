@@ -16,14 +16,14 @@
  *   can be created, and neither is able to terminate.
  */
 
-pcb_t pcb[ 2 ]; // By changing the number you can vary the number of programs being run (1.b)
+pcb_t pcb[ 3 ]; // By changing the number you can vary the number of programs being run (1.b)
 int n = sizeof(pcb)/sizeof(pcb[0]); // Get the size of pcb (divide the whole array b the size of each element)
 int executing = 0;
 
 void round_robin_scheduler( ctx_t* ctx ) {
 
     // Round robin scheduler - starts at 0 and increases pcb index by 1 using executingNext
-    int executingNext = (executing + 1)%n;
+    int executingNext = (executing + 1)%n; //check that the next one is ready
     memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve P_1
     pcb[ executing ].status = STATUS_READY;                // update   P_1 status
     memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) ); // restore  P_2
@@ -36,23 +36,24 @@ void round_robin_scheduler( ctx_t* ctx ) {
 
 void priority_scheduler( ctx_t* ctx ) {
 
-  int maximum = 0;
+    //If age = priority then do the memcpy stuff and reset the age. If it doesnt then do nothting and just carry on.
+    if ( pcb[ executing ].age == pcb[ executing ].basePriority) {
 
-  for(int i=0; i<n; i++) {
-    //if (pcb[ i ].priority /= -1) {        //If priority equals -1 this means it has terminated.
-      if (pcb[ i ].priority > maximum) {
-        maximum = i;
-      }
-    //}
+      pcb[ executing ].age = 0;
+      int executingNext = (executing + 1)%n;
+
+      memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve P_1
+      pcb[ executing ].status = STATUS_READY;                // update   P_1 status
+      memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) ); // restore  P_2
+      pcb[ executingNext ].status = STATUS_EXECUTING;            // update   P_2 status
+      executing = executingNext;
+
+    //  PL011_putc( UART0, executing+'0', true );
+      return;
   }
-  memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve P_1
-  pcb[ executing ].status = STATUS_READY;                // update   P_1 status
-  memcpy( ctx, &pcb[ maximum ].ctx, sizeof( ctx_t ) ); // restore  P_2
-  pcb[ maximum ].status = STATUS_EXECUTING;            // update   P_2 status
-  executing = maximum;
-
-  PL011_putc( UART0, executing+'0', true );
-  return;
+  else {
+    pcb[ executing ].age = pcb[ executing ].age + 1;
+  }
 }
 
 
@@ -61,6 +62,8 @@ extern void     main_P3();
 extern uint32_t tos_P3;
 extern void     main_P4();
 extern uint32_t tos_P4;
+extern void     main_Ptemp();
+extern uint32_t tos_Ptemp;
 extern void     main_P5();
 extern uint32_t tos_P5;
 
@@ -103,7 +106,8 @@ void hilevel_handler_rst(ctx_t* ctx) {
   pcb[ 0 ].ctx.cpsr = 0x50;
   pcb[ 0 ].ctx.pc   = ( uint32_t )( &main_P3 );
   pcb[ 0 ].ctx.sp   = ( uint32_t )( &tos_P3  );
-  pcb[ 0 ].priority = 0;                            /////////////////////////
+  pcb[ 0 ].basePriority = 1;
+  pcb[ 0 ].age = 0;                           /////////////////////////
 
   memset( &pcb[ 1 ], 0, sizeof( pcb_t ) );
   pcb[ 1 ].pid      = 2;
@@ -111,15 +115,26 @@ void hilevel_handler_rst(ctx_t* ctx) {
   pcb[ 1 ].ctx.cpsr = 0x50;
   pcb[ 1 ].ctx.pc   = ( uint32_t )( &main_P4 );
   pcb[ 1 ].ctx.sp   = ( uint32_t )( &tos_P4  );
-  pcb[ 1 ].priority = 5;
+  pcb[ 1 ].basePriority = 2;
+  pcb[ 1 ].age = 0;
 
   memset( &pcb[ 2 ], 0, sizeof( pcb_t ) );
   pcb[ 2 ].pid      = 3;
   pcb[ 2 ].status   = STATUS_READY;
   pcb[ 2 ].ctx.cpsr = 0x50;
-  pcb[ 2 ].ctx.pc   = ( uint32_t )( &main_P5 );
-  pcb[ 2 ].ctx.sp   = ( uint32_t )( &tos_P5  );
-  pcb[ 2 ].priority = 6;
+  pcb[ 2 ].ctx.pc   = ( uint32_t )( &main_Ptemp );
+  pcb[ 2 ].ctx.sp   = ( uint32_t )( &tos_Ptemp  );
+  pcb[ 2 ].basePriority = 1;
+  pcb[ 2 ].age = 0;
+
+  // memset( &pcb[ 3 ], 0, sizeof( pcb_t ) ); //this is usually pcb2
+  // pcb[ 3 ].pid      = 4;
+  // pcb[ 3 ].status   = STATUS_READY;
+  // pcb[ 3 ].ctx.cpsr = 0x50;
+  // pcb[ 3 ].ctx.pc   = ( uint32_t )( &main_P5 );
+  // pcb[ 3 ].ctx.sp   = ( uint32_t )( &tos_P5  );
+  // pcb[ 3 ].basePriority = 6;
+  // pcb[ 3 ].age = 0;
 
   /* Once the PCBs are initialised, we (arbitrarily) select one to be
    * restored (i.e., executed) when the function then returns.
