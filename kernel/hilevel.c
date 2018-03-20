@@ -16,8 +16,8 @@
  *   can be created, and neither is able to terminate.
  */
 
-pcb_t pcb[ 3 ]; // By changing the number you can vary the number of programs being run (1.b)
-int n = sizeof(pcb)/sizeof(pcb[0]); // Get the size of pcb (divide the whole array b the size of each element)
+pcb_t pcb[ 30 ]; // By changing the number you can vary the number of programs being run (1.b)
+int n = 1;//sizeof(pcb)/sizeof(pcb[0]); // Get the size of pcb (divide the whole array b the size of each element)
 int executing = 0;
 
 void round_robin_scheduler( ctx_t* ctx ) {
@@ -57,7 +57,6 @@ void priority_scheduler( ctx_t* ctx ) {
 }
 
 
-
 extern void     main_P3();
 extern uint32_t tos_P3;
 extern void     main_P4();
@@ -66,7 +65,9 @@ extern void     main_Ptemp();
 extern uint32_t tos_Ptemp;
 extern void     main_P5();
 extern uint32_t tos_P5;
-
+extern void     main_console();
+extern uint32_t tos_console;
+extern uint32_t tos_newProcesses;
 
 
 
@@ -104,28 +105,28 @@ void hilevel_handler_rst(ctx_t* ctx) {
   pcb[ 0 ].pid      = 1;
   pcb[ 0 ].status   = STATUS_READY;
   pcb[ 0 ].ctx.cpsr = 0x50;
-  pcb[ 0 ].ctx.pc   = ( uint32_t )( &main_P3 );
-  pcb[ 0 ].ctx.sp   = ( uint32_t )( &tos_P3  );
-  pcb[ 0 ].basePriority = 1;
+  pcb[ 0 ].ctx.pc   = ( uint32_t )( &main_console ); ///////
+  pcb[ 0 ].ctx.sp   = ( uint32_t )( &tos_newProcesses );
+  pcb[ 0 ].basePriority = 0;
   pcb[ 0 ].age = 0;                           /////////////////////////
 
-  memset( &pcb[ 1 ], 0, sizeof( pcb_t ) );
-  pcb[ 1 ].pid      = 2;
-  pcb[ 1 ].status   = STATUS_READY;
-  pcb[ 1 ].ctx.cpsr = 0x50;
-  pcb[ 1 ].ctx.pc   = ( uint32_t )( &main_P4 );
-  pcb[ 1 ].ctx.sp   = ( uint32_t )( &tos_P4  );
-  pcb[ 1 ].basePriority = 2;
-  pcb[ 1 ].age = 0;
-
-  memset( &pcb[ 2 ], 0, sizeof( pcb_t ) );
-  pcb[ 2 ].pid      = 3;
-  pcb[ 2 ].status   = STATUS_READY;
-  pcb[ 2 ].ctx.cpsr = 0x50;
-  pcb[ 2 ].ctx.pc   = ( uint32_t )( &main_Ptemp );
-  pcb[ 2 ].ctx.sp   = ( uint32_t )( &tos_Ptemp  );
-  pcb[ 2 ].basePriority = 1;
-  pcb[ 2 ].age = 0;
+  // memset( &pcb[ 1 ], 0, sizeof( pcb_t ) );
+  // pcb[ 1 ].pid      = 2;
+  // pcb[ 1 ].status   = STATUS_READY;
+  // pcb[ 1 ].ctx.cpsr = 0x50;
+  // pcb[ 1 ].ctx.pc   = ( uint32_t )( &main_P4 );
+  // pcb[ 1 ].ctx.sp   = ( uint32_t )( &tos_P4  );
+  // pcb[ 1 ].basePriority = 2;
+  // pcb[ 1 ].age = 0;
+  //
+  // memset( &pcb[ 2 ], 0, sizeof( pcb_t ) );
+  // pcb[ 2 ].pid      = 3;
+  // pcb[ 2 ].status   = STATUS_READY;
+  // pcb[ 2 ].ctx.cpsr = 0x50;
+  // pcb[ 2 ].ctx.pc   = ( uint32_t )( &main_Ptemp );
+  // pcb[ 2 ].ctx.sp   = ( uint32_t )( &tos_Ptemp  );
+  // pcb[ 2 ].basePriority = 1;
+  // pcb[ 2 ].age = 0;
 
   // memset( &pcb[ 3 ], 0, sizeof( pcb_t ) ); //this is usually pcb2
   // pcb[ 3 ].pid      = 4;
@@ -160,6 +161,7 @@ void hilevel_handler_irq(ctx_t* ctx) {
     PL011_putc( UART0, 'T', true );
     TIMER0->Timer1IntClr = 0x01;
     priority_scheduler(ctx);
+    //round_robin_scheduler(ctx);
   }
 
   // Step 5: write the interrupt identifier to signal we're done.
@@ -213,10 +215,99 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
       break;
     }
 
-    // case 0x04 : {
+ // fork [11, Page 881]:
+ //  - create new child process with unique PID,
+ //  - replicate state (e.g., address space) of parent in child,
+ //  - parent and child both return from fork, and continue to execute after the call point,
+ //  - return value is 0 for child, and PID of child for parent.
+
+// Put the ctx back into pcb[executing].ctx
+// Copy pcb[executing] to pcb[new]
+// change pid of pcb[new]
+// find top of stack of parent
+// find offset of ctx.sp into that stack
+// make new stack space for pcb[new]
+// copy tos for parent into pcb[new].sp in full
+// offset the sp for child by correct amount (same as parent)
+// give 0 to child.ctx.gpr[0]
+// give new pid to parent.ctx.gpr[0]
+
+    case 0x03 : { //fork
+
+//      memcpy( ctx, &pcb[ executing ].ctx, sizeof( ctx_t ) );
+
+      pcb_t* parent = &pcb[executing];
+      pcb_t* child = &pcb[ n+1 ];
+
+      memcpy( child, parent, sizeof( pcb_t ));
+      pcb[ n+1 ].pid = pcb[executing].pid + 1;
+
+      uint32_t parentTos = (uint32_t) &tos_newProcesses-executing*0x00001000;  //should parentTos have an ampasand?
+      int offset = (uint32_t) &parentTos - pcb[ executing ].ctx.sp;
+
+      uint32_t childTos = (uint32_t) &tos_newProcesses-(n+1)*0x00001000;
+      memcpy(&childTos, &parentTos, 0x00001000 );
+      pcb[ n+1 ].ctx.sp = (uint32_t) &childTos - offset;
+
+      parent->ctx.gpr[ 0 ] = child->pid;
+      child->ctx.gpr[ 0 ] = 0;
+
+      break;
+
+
+      //create new child pcb and copy the values from the parent
+      // memset( &pcb[ n+1 ], 0, sizeof( pcb_t ) );
+      // pcb[ n+1 ].pid      = pcb[ executing ].pid + 1;                      //unique PID but is it a problem for this to be hardcoded>
+      // pcb[ n+1 ].status   = STATUS_READY;
+      // pcb[ n+1 ].ctx.cpsr = pcb[ executing ].ctx.cpsr;
+      // pcb[ n+1 ].ctx.pc   = pcb[ executing ].ctx.pc;
+      // pcb[ n+1 ].ctx.sp   = pcb[ executing ].ctx.sp;
+      // pcb[ n+1 ].basePriority = pcb[ executing ].basePriority;
+      // pcb[ n+1 ].age = pcb[ executing ].age;                           /////////////////////////
+      //
+      // //Copy parents stack to child's stack
+      // memcpy(tos_newProcesses+(n+1)*1000, tos_newProcesses+executing*1000, 0x00001000 ); // 1) top of stack of child, 2)top of stack of parent, 3) size of what im copying
+      // int offset = tos_newProcesses+executing*1000 - pcb[ executing ].ctx.sp; //where the stack pointer is in relation to the top of stack
+      // pcb[n+1].ctx.sp = tos_newProcesses+(n+1)*1000 - offset; //Minus offset so that stack pointer is in same position relative to parent
+      //
+      // //I have made space (tos_newProcesses) for new processes, somehow have to handle that space here. ^^^^
+      //
+      // //  - return value is 0 for child, and PID of child for parent.
+      // parent->ctx.gpr[ 0 ] = child->pid;
+      // child->ctx.gpr[ 0 ] = 0;
+      //
+      // break;
+
+      //The maximum size of pcb is 1!! PROBLEM.
+      //Shell was being printed over and over again.
+
+    }
+
+    // case 0x04 : { //exit
     //   pcb[ executing ].status = STATUS_TERMINATED;   //P5 has a limit of 50 therefore calls exit (0x04), handle this.
     //   pcb[ executing ].priority = -1;
     // }
+
+
+// EXEC
+// replace current process image (e.g., text segment) with with new process image: effectively this means
+//  execute a new program,
+// reset state (e.g., stack pointer); continue to execute at the entry point of new program,
+// no return, since call point no longer exists
+
+     case 0x05 : { //exec
+
+       // //status = STATUS_EXECUTING;
+       // //executing = n+1;
+       //
+       //
+       // memset(&tos_newProcesses-0x00001000, 0, 0x00001000);
+       // ctx->pc = ctx->gpr[0];
+       // ctx->sp = &tos_newProcesses-executing*0x00001000;
+       //
+       // break;
+     }
+
 
     default   : { // 0x?? => unknown/unsupported
       break;
