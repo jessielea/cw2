@@ -118,6 +118,15 @@ void hilevel_handler_rst(ctx_t* ctx) {
   // pcb[ 1 ].ctx.sp   = ( uint32_t )( &tos_P4  );
   // pcb[ 1 ].basePriority = 2;
   // pcb[ 1 ].age = 0;
+
+  // memset( &pcb[ 1 ], 0, sizeof( pcb_t ) );
+  // pcb[ 1 ].pid      = 2;
+  // pcb[ 1 ].status   = STATUS_READY;
+  // pcb[ 1 ].ctx.cpsr = 0x50;
+  // pcb[ 1 ].ctx.pc   = ( uint32_t )( &main_P4 );
+  // pcb[ 1 ].ctx.sp   = ( uint32_t )( &tos_P4  );
+  // pcb[ 1 ].basePriority = 2;
+  // pcb[ 1 ].age = 0;
   //
   // memset( &pcb[ 2 ], 0, sizeof( pcb_t ) );
   // pcb[ 2 ].pid      = 3;
@@ -234,10 +243,10 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
 
     case 0x03 : { //fork
 
-//      memcpy( ctx, &pcb[ executing ].ctx, sizeof( ctx_t ) );
+      memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) );
 
       pcb_t* parent = &pcb[executing];
-      pcb_t* child = &pcb[ n+1 ];
+      pcb_t* child = &pcb[ n+1 ]; //find first available pcb space
 
       memcpy( child, parent, sizeof( pcb_t ));
       pcb[ n+1 ].pid = pcb[executing].pid + 1;
@@ -246,7 +255,7 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
       int offset = (uint32_t) &parentTos - pcb[ executing ].ctx.sp;
 
       uint32_t childTos = (uint32_t) &tos_newProcesses-(n+1)*0x00001000;
-      memcpy(&childTos, &parentTos, 0x00001000 );
+      memcpy((void *) childTos, (void *) parentTos, 0x00001000 );
       pcb[ n+1 ].ctx.sp = (uint32_t) &childTos - offset;
 
       parent->ctx.gpr[ 0 ] = child->pid;
@@ -297,16 +306,26 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
 
      case 0x05 : { //exec
 
-       // //status = STATUS_EXECUTING;
-       // //executing = n+1;
-       //
-       //
-       // memset(&tos_newProcesses-0x00001000, 0, 0x00001000);
-       // ctx->pc = ctx->gpr[0];
-       // ctx->sp = &tos_newProcesses-executing*0x00001000;
-       //
-       // break;
+       //status = STATUS_EXECUTING;
+       //executing = n+1;
+
+       PL011_putc( UART0, 'E', true );
+
+       memset(&tos_newProcesses-0x00001000, 0, 0x00001000);
+       ctx->pc = ctx->gpr[0];
+       ctx->sp = (uint32_t) &tos_newProcesses-executing*0x00001000;
+
+       break; //P3 not being printed! But where do I actually call P3??
      }
+     // case 0x06 : { //kill
+     //   // for process identified by pid, send signal of x
+     //  int pid = ctx->gpr[0];
+     //  for (int i=0;i<n;i++) {
+     //    if (pcb[i].pid == pid) {
+     //      pcb[i].status = SIG_TERM;
+     //    }
+     //  }
+     // }
 
 
     default   : { // 0x?? => unknown/unsupported
