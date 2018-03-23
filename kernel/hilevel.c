@@ -42,13 +42,13 @@ void priority_scheduler( ctx_t* ctx ) {
       pcb[ executing ].age = 0;
       int executingNext = (executing + 1)%n;
 
-      memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve P_1
-      pcb[ executing ].status = STATUS_READY;                // update   P_1 status
-      memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) ); // restore  P_2
-      pcb[ executingNext ].status = STATUS_EXECUTING;            // update   P_2 status
+      memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve executing
+      pcb[ executing ].status = STATUS_READY;                // update executing's status
+      memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) ); // restore next program
+      pcb[ executingNext ].status = STATUS_EXECUTING;            // update next program's status
       executing = executingNext;
 
-    //  PL011_putc( UART0, executing+'0', true );
+      PL011_putc( UART0, executing+'0', true );
       return;
   }
   else {
@@ -106,8 +106,8 @@ void hilevel_handler_rst(ctx_t* ctx) {
   pcb[ 0 ].status   = STATUS_READY;
   pcb[ 0 ].ctx.cpsr = 0x50;
   pcb[ 0 ].ctx.pc   = ( uint32_t )( &main_console ); ///////
-  pcb[ 0 ].ctx.sp   = ( uint32_t )( &tos_newProcesses );
-  pcb[ 0 ].basePriority = 0;
+  pcb[ 0 ].ctx.sp   = ( uint32_t )( &tos_console );
+  pcb[ 0 ].basePriority = 0;                   //Setting console to high priority so that it continues to execute.
   pcb[ 0 ].age = 0;                           /////////////////////////
 
   // memset( &pcb[ 1 ], 0, sizeof( pcb_t ) );
@@ -149,6 +149,7 @@ void hilevel_handler_rst(ctx_t* ctx) {
   /* Once the PCBs are initialised, we (arbitrarily) select one to be
    * restored (i.e., executed) when the function then returns.
    */
+  PL011_putc( UART0, 'R', true );
 
   memcpy( ctx, &pcb[ 0 ].ctx, sizeof( ctx_t ) );
   pcb[ 0 ].status = STATUS_EXECUTING;
@@ -243,25 +244,36 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
 
     case 0x03 : { //fork
 
-      memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) );
+
+
 
       pcb_t* parent = &pcb[executing];
-      pcb_t* child = &pcb[ n+1 ]; //find first available pcb space
+      pcb_t* child = &pcb[ n ]; //find first available pcb space
 
-      memcpy( child, parent, sizeof( pcb_t ));
-      pcb[ n+1 ].pid = pcb[executing].pid + 1;
+      memcpy( &parent->ctx, ctx, sizeof( ctx_t ) );
 
-      uint32_t parentTos = (uint32_t) &tos_newProcesses-executing*0x00001000;  //should parentTos have an ampasand?
-      int offset = (uint32_t) &parentTos - pcb[ executing ].ctx.sp;
+      memset( child, 0, sizeof(pcb_t));
 
-      uint32_t childTos = (uint32_t) &tos_newProcesses-(n+1)*0x00001000;
-      memcpy((void *) childTos, (void *) parentTos, 0x00001000 );
-      pcb[ n+1 ].ctx.sp = (uint32_t) &childTos - offset;
+      //memcpy( &pcb[ n+1 ].ctx, ctx, sizeof( ctx_t ));
+      memcpy( child, parent, sizeof(pcb_t));
+      child->pid = n + 1;        //this is gonna be a problem - executing=console plus 1 will always be 2!
 
-      parent->ctx.gpr[ 0 ] = child->pid;
+      uint32_t parentTos = (uint32_t) &tos_newProcesses-(executing*0x00001000);
+      int offset = (uint32_t) parentTos - parent->ctx.sp;
+
+      uint32_t childTos = (uint32_t) &tos_newProcesses-((n)*0x00001000);
+      memcpy((void *) childTos - 0x00001000, (void *) parentTos - 0x00001000, 0x00001000 ); //minus 0x00001000 from childTos and parentTos ??
+      child->ctx.sp = (uint32_t) childTos - offset;
+
+      child->status = STATUS_READY;
+
+
+      ctx->gpr[ 0 ] = child->pid;
       child->ctx.gpr[ 0 ] = 0;
+      n++;
 
       break;
+      //hilevel handler reset is being called!! Something is setting pc/lr to 0 and therefore starting it all over again.
 
 
       //create new child pcb and copy the values from the parent
@@ -293,8 +305,9 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
     }
 
     // case 0x04 : { //exit
+    //   memset( &pcb[ executing ], 0, sizeof( pcb_t ) );
     //   pcb[ executing ].status = STATUS_TERMINATED;   //P5 has a limit of 50 therefore calls exit (0x04), handle this.
-    //   pcb[ executing ].priority = -1;
+    //   pcb[ executing ].basePriority = -1;
     // }
 
 
@@ -311,21 +324,44 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
 
        PL011_putc( UART0, 'E', true );
 
-       memset(&tos_newProcesses-0x00001000, 0, 0x00001000);
+       memset((uint32_t)&tos_newProcesses-(executing*0x00001000)-0x00001000, 0, 0x00001000);
        ctx->pc = ctx->gpr[0];
-       ctx->sp = (uint32_t) &tos_newProcesses-executing*0x00001000;
+       ctx->sp = (uint32_t) &tos_newProcesses-(executing*0x00001000);
 
-       break; //P3 not being printed! But where do I actually call P3??
+       // void* main_newprocess = (void *)ctx->gpr[ 0 ];
+       //
+       //
+       // memcpy(&pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve process that was executing
+       // pcb[ executing ].status = STATUS_READY;                // update  the status of executing process
+       //
+       // pcb[n+1].ctx.pc = (uint32_t) (main_newprocess);
+       //
+       //
+       //
+       //
+       // memcpy( ctx, &pcb[ n+1].ctx, sizeof( ctx_t ) ); // restore  process to execute
+       // pcb[ n+1 ].status = STATUS_EXECUTING;            // update   the status of the executing process
+       // executing = n+1; //sets the process that is excuting to the new process
+       //
+       break;
      }
      // case 0x06 : { //kill
      //   // for process identified by pid, send signal of x
-     //  int pid = ctx->gpr[0];
+     //  int pid = ctx->gpr[0];       //////////this PID is 3! Because I wrote terminate 3
      //  for (int i=0;i<n;i++) {
      //    if (pcb[i].pid == pid) {
-     //      pcb[i].status = SIG_TERM;
+     //      PL011_putc( UART0, 'K', true );
+     //      pcb[i].status = STATUS_TERMINATED;
+     //      pcb[ executing ].basePriority = -1;
      //    }
      //  }
      // }
+
+     //QUESTIONS TO ANSWER:
+     // Shell continues to print out, is it enough to just set the priority of console to be huge so it continues to execute?
+     // The program can no longer step through when i get to user/P3.c:27.
+     // kill spazzes up. Somethings very wrong.
+     //abort trap 6
 
 
     default   : { // 0x?? => unknown/unsupported
