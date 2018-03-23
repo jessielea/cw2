@@ -39,8 +39,15 @@ void priority_scheduler( ctx_t* ctx ) {
     //If age = priority then do the memcpy stuff and reset the age. If it doesnt then do nothting and just carry on.
     if ( pcb[ executing ].age == pcb[ executing ].basePriority) {
 
+      int executingNext = 0;
       pcb[ executing ].age = 0;
-      int executingNext = (executing + 1)%n;
+
+      for (int i=(executing+1)%n; i < n; i++) {
+        if (pcb[i].status == STATUS_READY) { //Find first AVAILABLE pcb
+          executingNext = i;
+          break;
+        }
+      }
 
       memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve executing
       pcb[ executing ].status = STATUS_READY;                // update executing's status
@@ -52,7 +59,7 @@ void priority_scheduler( ctx_t* ctx ) {
       return;
   }
   else {
-    pcb[ executing ].age = pcb[ executing ].age + 1;
+      pcb[ executing ].age = pcb[ executing ].age + 1;
   }
 }
 
@@ -244,9 +251,6 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
 
     case 0x03 : { //fork
 
-
-
-
       pcb_t* parent = &pcb[executing];
       pcb_t* child = &pcb[ n ]; //find first available pcb space
 
@@ -256,7 +260,7 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
 
       //memcpy( &pcb[ n+1 ].ctx, ctx, sizeof( ctx_t ));
       memcpy( child, parent, sizeof(pcb_t));
-      child->pid = n + 1;        //this is gonna be a problem - executing=console plus 1 will always be 2!
+      child->pid = n + 1;
 
       uint32_t parentTos = (uint32_t) &tos_newProcesses-(executing*0x00001000);
       int offset = (uint32_t) parentTos - parent->ctx.sp;
@@ -304,11 +308,13 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
 
     }
 
-    // case 0x04 : { //exit
-    //   memset( &pcb[ executing ], 0, sizeof( pcb_t ) );
-    //   pcb[ executing ].status = STATUS_TERMINATED;   //P5 has a limit of 50 therefore calls exit (0x04), handle this.
-    //   pcb[ executing ].basePriority = -1;
-    // }
+    case 0x04 : { //exit
+      memset( &pcb[ executing ], 0, sizeof( pcb_t ) );
+      pcb[ executing ].status = STATUS_TERMINATED;   //P5 has a limit of 50 therefore calls exit (0x04), handle this.
+      //pcb[ executing ].basePriority = -1;
+      priority_scheduler(ctx);
+      break;
+    }
 
 
 // EXEC
@@ -318,9 +324,6 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
 // no return, since call point no longer exists
 
      case 0x05 : { //exec
-
-       //status = STATUS_EXECUTING;
-       //executing = n+1;
 
        PL011_putc( UART0, 'E', true );
 
@@ -345,23 +348,21 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
        //
        break;
      }
-     // case 0x06 : { //kill
-     //   // for process identified by pid, send signal of x
-     //  int pid = ctx->gpr[0];       //////////this PID is 3! Because I wrote terminate 3
-     //  for (int i=0;i<n;i++) {
-     //    if (pcb[i].pid == pid) {
-     //      PL011_putc( UART0, 'K', true );
-     //      pcb[i].status = STATUS_TERMINATED;
-     //      pcb[ executing ].basePriority = -1;
-     //    }
-     //  }
-     // }
+     case 0x06 : { //kill
+       // for process identified by pid, send signal of x
+      int pid = ctx->gpr[0];       //////////this PID is 3! Because I wrote terminate 3
+      for (int i=0;i<n;i++) {
+        if (pcb[i].pid == pid) {
+          PL011_putc( UART0, 'K', true );
+          memset( &pcb[ i ], 0, sizeof( pcb_t ) );
+          pcb[ i ].status = STATUS_TERMINATED;
+          break;
+          //pcb[ i ].basePriority = -1;
+        }
+      }
+     }
+     break;
 
-     //QUESTIONS TO ANSWER:
-     // Shell continues to print out, is it enough to just set the priority of console to be huge so it continues to execute?
-     // The program can no longer step through when i get to user/P3.c:27.
-     // kill spazzes up. Somethings very wrong.
-     //abort trap 6
 
 
     default   : { // 0x?? => unknown/unsupported
