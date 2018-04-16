@@ -60,4 +60,11 @@ typedef struct {
      int age;
 } pcb_t;
 
+typedef struct {
+  pid_t parent;
+  pid_t child;
+  uint32_t data;
+  bool inUse;
+} pipe_t;
+
 #endif

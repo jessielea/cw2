@@ -19,6 +19,26 @@
 pcb_t pcb[ 30 ]; // By changing the number you can vary the number of programs being run (1.b)
 int n = 1;//sizeof(pcb)/sizeof(pcb[0]); // Get the size of pcb (divide the whole array b the size of each element)
 int executing = 0;
+pipe_t pipes[ 60 ];
+
+//init, reset, findnextpipeslot
+
+void init_pipe( int pipe_id) {
+  memset( &pipes[ pipe_id ], 0, sizeof( pipe_t ) );
+  pipes[ pipe_id ].parent      = (pid_t) (-1);
+  pipes[ pipe_id ].child      = (pid_t) (-1);
+  pipes[ pipe_id ].data      = 0;
+  pipes[ pipe_id ].inUse     = false;
+}
+
+int next_available_pipe() {
+  for (int i = 3; i<60; i++) {
+    if (!pipes[i].inUse) {
+      return i;
+    }
+  }
+}
+
 
 void round_robin_scheduler( ctx_t* ctx ) {
 
@@ -115,7 +135,13 @@ void hilevel_handler_rst(ctx_t* ctx) {
   pcb[ 0 ].ctx.pc   = ( uint32_t )( &main_console ); ///////
   pcb[ 0 ].ctx.sp   = ( uint32_t )( &tos_console );
   pcb[ 0 ].basePriority = 0;                   //Setting console to high priority so that it continues to execute.
-  pcb[ 0 ].age = 0;                           /////////////////////////
+  pcb[ 0 ].age = 0;
+
+  //Initialise pipes as well
+  for (int i=0; i<60; i++) {               //hardcoded 60 for now.
+    init_pipe(i);
+  }
+
 
   // memset( &pcb[ 1 ], 0, sizeof( pcb_t ) );
   // pcb[ 1 ].pid      = 2;
@@ -208,10 +234,11 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
       char*  x = ( char* )( ctx->gpr[ 1 ] );
       int    n = ( int   )( ctx->gpr[ 2 ] );
 
-      for( int i = 0; i < n; i++ ) {
-        PL011_putc( UART0, *x++, true );
-      }
-
+      //if(fd < 3) {
+        for( int i = 0; i < n; i++ ) {
+          PL011_putc( UART0, *x++, true );
+        }
+      //} else pipes[ fd ].data = n; //The parameter n needs to be the data i.e. 0 for fork availble, 1 for it being used.
       ctx->gpr[ 0 ] = n;
       break;
     }
@@ -246,8 +273,10 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
 // make new stack space for pcb[new]
 // copy tos for parent into pcb[new].sp in full
 // offset the sp for child by correct amount (same as parent)
+//child->status = STATUS_READY;
 // give 0 to child.ctx.gpr[0]
 // give new pid to parent.ctx.gpr[0]
+//Increment no. of processes
 
     case 0x03 : { //fork
 
@@ -360,8 +389,55 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
           //pcb[ i ].basePriority = -1;
         }
       }
+      break;
      }
-     break;
+
+     case 0x08 : { //pipe
+       PL011_putc( UART0, '%', true );
+
+       int fd = next_available_pipe();
+
+       pipes[fd].inUse = true;
+
+       ctx->gpr[0] = fd;
+
+       break;
+     }
+
+     case 0x09 : { //OPEN
+       PL011_putc( UART0, '@', true );
+       //Fd (from pipe) is the parameter, ctx-\>gpr[0]
+       //if pipe= inUSe
+       //check if it has a parent, otherwise set parent to current processes pid
+       //check if has chhild otherwise set to pid
+       //else its already used at both ends so fail. return gpr (-1)
+
+       int fd = (int) (ctx->gpr[0]);
+       int pid = pcb[ executing ].pid;
+
+       if (!pipes[fd].inUse) {
+         ctx->gpr[0] = (-1);
+         break;
+       } else if (pipes[fd].parent == -1) {
+         //If it has no parent, set it here
+         pipes[ fd ].parent = (pid_t) (pid);
+       }
+       else if (pipes[fd].child == -1) {
+         //If it has no parent, set it here
+         pipes[ fd ].child = (pid_t) (pid);
+       }
+       else {
+         //Otherwise fail because pipe already used at both ends
+         ctx->gpr[0] = (-1);
+         break;
+       }
+
+       //If success, do this. Not actually really used..
+       ctx->gpr[0] = next_available_pipe();
+
+       break;
+     }
+
 
 
 
