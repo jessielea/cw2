@@ -58,6 +58,8 @@ typedef struct {
      ctx_t    ctx;
      int basePriority;  /////////////////////////////////////////
      int age;
+     int waitingfd;
+     bool readOrWrite; //false = read, true = write
 } pcb_t;
 
 typedef struct {
@@ -65,6 +67,7 @@ typedef struct {
   pid_t child;
   uint32_t data;
   bool inUse;
+  bool pipeFull; //Whether anything has been written to the pipe
 } pipe_t;
 
 #endif

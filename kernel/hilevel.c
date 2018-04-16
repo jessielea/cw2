@@ -29,6 +29,7 @@ void init_pipe( int pipe_id) {
   pipes[ pipe_id ].child      = (pid_t) (-1);
   pipes[ pipe_id ].data      = 0;
   pipes[ pipe_id ].inUse     = false;
+  pipes[ pipe_id ].pipeFull     = false;
 }
 
 int next_available_pipe() {
@@ -39,13 +40,44 @@ int next_available_pipe() {
   }
 }
 
+void resume_attempt_after_waiting() { //
+  for (int i=0; i < 30; i++) { //hardcoded
+    if (pcb[i].status == STATUS_WAITING) {
+      int id = pcb[i].waitingfd;
+      if (pcb[i].readOrWrite) { //i.e. true, if we are writing
+        if(!pipes[id].pipeFull) { //if the pipe is empty then try and write to it
+          pipes[ id ].data = n;
+          pipes[ id ].pipeFull = true;
+          pcb[i].status = STATUS_READY;
+        }
+      }
+      else { // if we we are reading
+        if(pipes[id].pipeFull) {
+          int r = pipes[ id ].data;
+          pipes[ id ].data = 0;
+          pipes[ id ].pipeFull = false;
+          pcb[i].ctx.gpr[ 0 ] = r;
+          pcb[i].status = STATUS_READY;
+        }
+      }
+    }
+  }
+}
+
 
 void round_robin_scheduler( ctx_t* ctx ) {
 
     // Round robin scheduler - starts at 0 and increases pcb index by 1 using executingNext
-    int executingNext = (executing + 1)%n; //check that the next one is ready
+    int executingNext = (executing + 1)%30; //check that the next one is ready
+
+    while (pcb[executingNext].status != STATUS_READY && pcb[executingNext].status != STATUS_EXECUTING) {
+      executingNext = (executingNext+1)%30;
+    }
+
     memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve P_1
-    pcb[ executing ].status = STATUS_READY;                // update   P_1 status
+    if(pcb[ executing ].status == STATUS_EXECUTING ) {
+      pcb[ executing ].status = STATUS_READY;                // update executing's status
+    }
     memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) ); // restore  P_2
     pcb[ executingNext ].status = STATUS_EXECUTING;            // update   P_2 status
     executing = executingNext;                                 // update   index => P_2
@@ -55,6 +87,8 @@ void round_robin_scheduler( ctx_t* ctx ) {
 }
 
 void priority_scheduler( ctx_t* ctx ) {
+
+    //resume_attempt_after_waiting();
 
     //If age = priority then do the memcpy stuff and reset the age. If it doesnt then do nothting and just carry on.
     if ( pcb[ executing ].age == pcb[ executing ].basePriority) {
@@ -70,7 +104,9 @@ void priority_scheduler( ctx_t* ctx ) {
       }
 
       memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve executing
-      pcb[ executing ].status = STATUS_READY;                // update executing's status
+      if(pcb[ executing ].status == STATUS_EXECUTING ) {
+        pcb[ executing ].status = STATUS_READY;                // update executing's status
+      }
       memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) ); // restore next program
       pcb[ executingNext ].status = STATUS_EXECUTING;            // update next program's status
       executing = executingNext;
@@ -95,6 +131,7 @@ extern uint32_t tos_P5;
 extern void     main_console();
 extern uint32_t tos_console;
 extern uint32_t tos_newProcesses;
+extern void     main_pipe();
 
 
 
@@ -203,7 +240,7 @@ void hilevel_handler_irq(ctx_t* ctx) {
   if( id == GIC_SOURCE_TIMER0 ) {
     PL011_putc( UART0, 'T', true );
     TIMER0->Timer1IntClr = 0x01;
-    priority_scheduler(ctx);
+    round_robin_scheduler(ctx);
     //round_robin_scheduler(ctx);
   }
 
@@ -234,11 +271,27 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
       char*  x = ( char* )( ctx->gpr[ 1 ] );
       int    n = ( int   )( ctx->gpr[ 2 ] );
 
-      //if(fd < 3) {
+      if(pcb[executing].pid != pipes[fd].parent && pcb[executing].pid != pipes[fd].child && fd > 2 ) { //check logic
+        ctx->gpr[ 0 ] = (-1);
+        break;
+      }
+
+      if(fd < 3) {
         for( int i = 0; i < n; i++ ) {
           PL011_putc( UART0, *x++, true );
         }
-      //} else pipes[ fd ].data = n; //The parameter n needs to be the data i.e. 0 for fork availble, 1 for it being used.
+      } else {
+        if ( pipes[fd].pipeFull ) {
+          pcb[executing].status = STATUS_WAITING;
+          pcb[executing].waitingfd = fd;
+          pcb[executing].readOrWrite = true; //we are writing!
+          round_robin_scheduler(ctx);
+        } else {
+          pipes[ fd ].data = n; //The parameter n needs to be the data i.e. 0 for fork availble, 1 for it being used.
+          pipes[ fd ].pipeFull = true;
+          PL011_putc( UART0, '!', true );
+        }
+      }
       ctx->gpr[ 0 ] = n;
       break;
     }
@@ -248,14 +301,35 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
       char*  x = ( char* )( ctx->gpr[ 1 ] );
       int    n = ( int   )( ctx->gpr[ 2 ] );
 
-      for( int i = 0; i < n; i++ ) {
-        *x = PL011_getc( UART0 , true );
-        x++;
+      int r = (-1);
+
+      if(pcb[executing].pid != pipes[fd].parent && pcb[executing].pid != pipes[fd].child && fd > 2 ) { //check logic
+        ctx->gpr[ 0 ] = (-1);
+        break;
       }
 
-      PL011_putc( UART0, 'x', true );
+      if(!pipes[fd].pipeFull) {
+        pcb[executing].status = STATUS_WAITING;
+        pcb[executing].waitingfd = fd;
+        pcb[executing].readOrWrite = false; //we are reading!
+        round_robin_scheduler(ctx);
+      } else {
 
-      ctx->gpr[ 0 ] = n;
+        r = pipes[ fd ].data;
+        pipes[ fd ].data = 0;
+        pipes[ fd ].pipeFull = false;
+        PL011_putc( UART0, '?', true );
+      }
+      //PL011_putc( UART0, r, true );
+
+      // if (fd < 3 ) {
+      //   for( int i = 0; i < n; i++ ) {
+      //     *x = PL011_getc( UART0 , true );
+      //     x++;
+      //   }
+      // }
+      //PL011_putc( UART0, 'x', true );
+      ctx->gpr[ 0 ] = r;
       break;
     }
 
@@ -341,7 +415,7 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
       memset( &pcb[ executing ], 0, sizeof( pcb_t ) );
       pcb[ executing ].status = STATUS_TERMINATED;   //P5 has a limit of 50 therefore calls exit (0x04), handle this.
       //pcb[ executing ].basePriority = -1;
-      priority_scheduler(ctx);
+      round_robin_scheduler(ctx);
       break;
     }
 
