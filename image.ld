@@ -29,3 +29,7 @@ SECTIONS {
   .       = . + 0x00010000;
   tos_newProcesses  = .;
   }
+  /* allocate stack for shared memory           */
+  .       = . + 0x10110000;
+  tos_shrm  = .;
+  }

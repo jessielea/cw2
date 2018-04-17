@@ -60,4 +60,11 @@ typedef struct {
      int age;
 } pcb_t;
 
+//Shared memory struct
+typedef struct {
+  int shmid;
+  void* tos;
+  bool lock;
+} shrm_t;
+
 #endif
