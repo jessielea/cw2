@@ -82,4 +82,6 @@ extern void* shmget(int x);
 
 extern void shmdt(int x);
 
+extern void writes(char* s);
+
 #endif

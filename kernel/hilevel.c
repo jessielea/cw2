@@ -33,7 +33,7 @@ void round_robin_scheduler( ctx_t* ctx ) {
     pcb[ executingNext ].status = STATUS_EXECUTING;            // update   P_2 status
     executing = executingNext;                                 // update   index => P_2
 
-    PL011_putc( UART0, executing+'0', true );
+    //PL011_putc( UART0, executing+'0', true );
   return;
 }
 
@@ -58,7 +58,7 @@ void priority_scheduler( ctx_t* ctx ) {
       pcb[ executingNext ].status = STATUS_EXECUTING;            // update next program's status
       executing = executingNext;
 
-      PL011_putc( UART0, executing+'0', true );
+      //PL011_putc( UART0, executing+'0', true );
       return;
   }
   else {
@@ -119,8 +119,8 @@ void hilevel_handler_rst(ctx_t* ctx) {
   pcb[ 0 ].ctx.cpsr = 0x50;
   pcb[ 0 ].ctx.pc   = ( uint32_t )( &main_console ); ///////
   pcb[ 0 ].ctx.sp   = ( uint32_t )( &tos_console );
-  pcb[ 0 ].basePriority = 0;                   //Setting console to high priority so that it continues to execute.
-  pcb[ 0 ].age = 0;                           /////////////////////////
+  pcb[ 0 ].basePriority = 0;
+  pcb[ 0 ].age = 0;
 
   // memset( &pcb[ 1 ], 0, sizeof( pcb_t ) );
   // pcb[ 1 ].pid      = 2;
@@ -203,10 +203,11 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
    */
 
   switch( id ) {
-    // case 0x00 : { // 0x00 => yield()
-    //   round_robin_scheduler( ctx );
-    //   break;
-    // }
+
+    case 0x00 : { // 0x00 => yield()
+      round_robin_scheduler( ctx );
+      break;
+    }
 
     case 0x01 : { // 0x01 => write( fd, x, n )
       int   fd = ( int   )( ctx->gpr[ 0 ] );
@@ -379,6 +380,7 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
          }
        }
 
+       //if the region of shared mem doesnt exist yet
        if (target == -1) {
          target = numberOfShrms;
          shrms[target].shmid = id;
@@ -394,7 +396,7 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
        }
 
        shrms[target].lock = true;
-       ctx->gpr[0] = shrms[target].tos; //return the position in sharedmem
+       ctx->gpr[0] = (uint32_t) shrms[target].tos; //return the position in sharedmem
 
        break;
      }

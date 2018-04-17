@@ -168,3 +168,11 @@ void shmdt( int x ) {
               : "r0" );
   return;
 }
+
+void writes(char* s) {
+  int length;
+
+  for(length; s[length] != '\0'; length++);
+
+  write(STDOUT_FILENO, s, length );
+}
