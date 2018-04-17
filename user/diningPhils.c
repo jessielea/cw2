@@ -12,12 +12,17 @@ void think() {
   sleeps();
 }
 
-void eat(int x) {
+void eat(int x, int n) {
   void* left = shmget(x);
   void* right = shmget((x+1)%16);
 
+  char str[12];
+  itoa(str, n);
+
   writes((char*) names[x]); //print these names
-  writes("is eating\n");
+  writes("is eating for the ");
+  writes(str);
+  writes(" time\n");
 
   sleeps();
 
@@ -27,17 +32,18 @@ void eat(int x) {
 }
 
 void philosopher(int x) {
+  int n = 0;
   while(1) {
     think();
-    eat(x);
+    eat(x, ++n);
   }
 }
 
-int main_phil() {
+void main_phil() {
   writes( "phil");
 
   for (int i = 0; i < 16; i++) {
-    int pid = fork();
+    pid_t pid = fork();
     if (pid == 0) {
       writes("child");
       philosopher(i);

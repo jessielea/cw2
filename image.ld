@@ -26,7 +26,7 @@ SECTIONS {
   .       = . + 0x00001000;
   tos_console  = .;
   /* allocate stack for new processes, huge number           */
-  .       = . + 0x00010000;
+  .       = . + 0x00100000;
   tos_newProcesses  = .;
   /* allocate stack for shared memory           */
   .       = . + 0x10110000;

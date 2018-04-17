@@ -37,33 +37,45 @@ void round_robin_scheduler( ctx_t* ctx ) {
   return;
 }
 
+int nextProcess() {
+
+  for (int i=1; i < n; i++) {
+    if (pcb[(executing+i)%n].status == STATUS_READY) { //Find first AVAILABLE pcb
+      return (executing+i)%n;
+    }
+  }
+  return executing;
+}
+
+void saveProcess(ctx_t* ctx) {
+  memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve executing
+  pcb[ executing ].status = STATUS_READY;                // update executing's status
+}
+
+void updateProcess(int executingNext, ctx_t* ctx) {
+  memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) ); // restore next program
+  pcb[ executingNext ].status = STATUS_EXECUTING;            // update next program's status
+  executing = executingNext;
+}
+
 void priority_scheduler( ctx_t* ctx ) {
 
     //If age = priority then do the memcpy stuff and reset the age. If it doesnt then do nothting and just carry on.
     if ( pcb[ executing ].age == pcb[ executing ].basePriority) {
 
-      int executingNext = 0;
       pcb[ executing ].age = 0;
 
-      for (int i=(executing+1)%n; i < n; i++) {
-        if (pcb[i].status == STATUS_READY) { //Find first AVAILABLE pcb
-          executingNext = i;
-          break;
-        }
-      }
+      int executingNext = nextProcess();
 
-      memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve executing
-      pcb[ executing ].status = STATUS_READY;                // update executing's status
-      memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) ); // restore next program
-      pcb[ executingNext ].status = STATUS_EXECUTING;            // update next program's status
-      executing = executingNext;
+      saveProcess(ctx);
+      updateProcess(executingNext, ctx);
 
       //PL011_putc( UART0, executing+'0', true );
       return;
-  }
-  else {
+    }
+    else {
       pcb[ executing ].age = pcb[ executing ].age + 1;
-  }
+    }
 }
 
 
@@ -205,7 +217,7 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
   switch( id ) {
 
     case 0x00 : { // 0x00 => yield()
-      round_robin_scheduler( ctx );
+      priority_scheduler( ctx );
       break;
     }
 
@@ -318,7 +330,9 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
       memset( &pcb[ executing ], 0, sizeof( pcb_t ) );
       pcb[ executing ].status = STATUS_TERMINATED;   //P5 has a limit of 50 therefore calls exit (0x04), handle this.
       //pcb[ executing ].basePriority = -1;
-      priority_scheduler(ctx);
+      int executingNext = nextProcess();
+      // i DONT want to saveProcess();
+      updateProcess(executingNext, ctx);
       break;
     }
 
@@ -333,7 +347,7 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
 
        PL011_putc( UART0, 'E', true );
 
-       memset((uint32_t)&tos_newProcesses-(executing*0x00001000)-0x00001000, 0, 0x00001000);
+       //memset((uint32_t)&tos_newProcesses-(executing*0x00001000)-0x00001000, 0, 0x00001000);
        ctx->pc = ctx->gpr[0];
        ctx->sp = (uint32_t) &tos_newProcesses-(executing*0x00001000);
 

@@ -21,8 +21,8 @@ void puts( char* x, int n ) {
 void gets( char* x, int n ) {
   for( int i = 0; i < n; i++ ) {
     x[ i ] = PL011_getc( UART1, true );
-
-    if( x[ i ] == '\x0A' ) {
+    if (x[i] == 0 || x[i] == 030) i--;  //For some reason \030 is being added to the string.. so get rid of it.
+    else if( x[ i ] == '\x0A' ) {
       x[ i ] = '\x00'; break;
     }
   }
@@ -92,13 +92,20 @@ void main_console() {
   char* p, x[ 1024 ];
 
   while( 1 ) {
-    puts( "shell$ ", 7 ); gets( x, 1024 ); p = strtok( x, " " );
+    puts( "shell$ ", 7 );
+    gets( x, 1024 );
+    p = strtok( x, " " );
 
     if     ( 0 == strcmp( p, "execute"   ) ) {
+      void *process = load( strtok( NULL, " ") );
+      if (process == NULL) {
+        puts("Process doesn't exist.\n", 23);
+        continue;
+      }
       pid_t pid = fork();
 
       if( 0 == pid ) {
-        exec( load( strtok( NULL, " " ) ) );
+        exec( process );
       }
     }
     else if( 0 == strcmp( p, "terminate" ) ) {
