@@ -7,6 +7,7 @@
 
 #ifndef __HILEVEL_H
 #define __HILEVEL_H
+#define maxShrm 16
 
 // Include functionality relating to newlib (the standard C library).
 

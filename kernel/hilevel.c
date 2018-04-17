@@ -20,6 +20,9 @@ pcb_t pcb[ 30 ]; // By changing the number you can vary the number of programs b
 int n = 1;//sizeof(pcb)/sizeof(pcb[0]); // Get the size of pcb (divide the whole array b the size of each element)
 int executing = 0;
 
+shrm_t shrms[maxShrm];
+int numberOfShrms = 0;
+
 void round_robin_scheduler( ctx_t* ctx ) {
 
     // Round robin scheduler - starts at 0 and increases pcb index by 1 using executingNext
@@ -364,6 +367,55 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
       break;
      }
 
+     case 0x08 : { //SHMGET
+       uint32_t id = (uint32_t) ctx->gpr[0];
+
+       int target = -1;
+
+       for( int i = 0; i < maxShrm; i++) {
+         if ( shrms[i].shmid == id ) {
+           target = i; //target is the position in the stack i.e. 1 - 16
+         }
+       }
+
+       if (target == -1) {
+         target = numberOfShrms;
+         shrms[target].shmid = id;
+         shrms[target].tos = (void*) &tos_shrm - (numberOfShrms*1000);
+         shrms[target].lock = false;
+
+         numberOfShrms++;
+       }
+       else {
+         if (shrms[target].lock) {
+           priority_scheduler(ctx); //sorry mate, no luck
+         }
+       }
+
+       shrms[target].lock = true;
+       ctx->gpr[0] = shrms[target].tos; //return the position in sharedmem
+
+       break;
+     }
+
+
+     case 0x09 : { //SHMDT
+       uint32_t id = (uint32_t) ctx->gpr[0];
+
+       int target = -1;
+
+       for( int i = 0; i < maxShrm; i++) {
+         if ( shrms[i].shmid == id ) {
+           target = i; //target is the position in the stack i.e. 1 - 16
+         }
+       }
+
+       if (target == -1) break;
+
+       shrms[target].lock = false;
+
+       break;
+     }
 
 
 
