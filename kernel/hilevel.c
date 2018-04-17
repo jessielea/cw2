@@ -78,6 +78,7 @@ extern uint32_t tos_P5;
 extern void     main_console();
 extern uint32_t tos_console;
 extern uint32_t tos_newProcesses;
+extern void     main_phil();
 extern uint32_t tos_shrm;
 
 
