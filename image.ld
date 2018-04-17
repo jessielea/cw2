@@ -28,7 +28,6 @@ SECTIONS {
   /* allocate stack for new processes, huge number           */
   .       = . + 0x00010000;
   tos_newProcesses  = .;
-  }
   /* allocate stack for shared memory           */
   .       = . + 0x10110000;
   tos_shrm  = .;

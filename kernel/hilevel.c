@@ -361,8 +361,9 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
           //pcb[ i ].basePriority = -1;
         }
       }
+      break;
      }
-     break;
+
 
 
 
