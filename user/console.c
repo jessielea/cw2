@@ -21,7 +21,7 @@ void puts( char* x, int n ) {
 void gets( char* x, int n ) {
   for( int i = 0; i < n; i++ ) {
     x[ i ] = PL011_getc( UART1, true );
-    if (x[i] == 0 || x[i] == 030) i--;  //For some reason \030 is being added to the string.. so get rid of it.
+    if (x[i] == 0 || x[i] == 030) i--;  //For some reason \030 is being added to the string.. get rid of it.
     else if( x[ i ] == '\x0A' ) {
       x[ i ] = '\x00'; break;
     }

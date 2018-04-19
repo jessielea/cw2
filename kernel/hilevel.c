@@ -16,61 +16,61 @@
  *   can be created, and neither is able to terminate.
  */
 
-pcb_t pcb[ 30 ]; // By changing the number you can vary the number of programs being run (1.b)
-int n = 1;//sizeof(pcb)/sizeof(pcb[0]); // Get the size of pcb (divide the whole array b the size of each element)
+pcb_t pcb[ 30 ]; // Vary the number of programs being run
+int n = 1;
 int executing = 0;
 
+// Array of shared memory regions
 shrm_t shrms[maxShrm];
 int numberOfShrms = 0;
 
 void round_robin_scheduler( ctx_t* ctx ) {
 
     // Round robin scheduler - starts at 0 and increases pcb index by 1 using executingNext
-    int executingNext = (executing + 1)%n; //check that the next one is ready
-    memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve P_1
-    pcb[ executing ].status = STATUS_READY;                // update   P_1 status
-    memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) ); // restore  P_2
-    pcb[ executingNext ].status = STATUS_EXECUTING;            // update   P_2 status
-    executing = executingNext;                                 // update   index => P_2
+    int executingNext = (executing + 1)%n;
+    memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) );      // preserve P_1
+    pcb[ executing ].status = STATUS_READY;                     // update   P_1 status
+    memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) );  // restore  P_2
+    pcb[ executingNext ].status = STATUS_EXECUTING;             // update   P_2 status
+    executing = executingNext;                                  // update   index => P_2
 
-    //PL011_putc( UART0, executing+'0', true );
   return;
 }
 
+//Find next process to execute
 int nextProcess() {
 
   for (int i=1; i < n; i++) {
-    if (pcb[(executing+i)%n].status == STATUS_READY) { //Find first AVAILABLE pcb
+    if (pcb[(executing+i)%n].status == STATUS_READY) {
       return (executing+i)%n;
     }
   }
   return executing;
 }
 
+//Preserve the currently executing process and update its status
 void saveProcess(ctx_t* ctx) {
-  memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve executing
-  pcb[ executing ].status = STATUS_READY;                // update executing's status
+  memcpy( &pcb[ executing ].ctx, ctx, sizeof( ctx_t ) );
+  pcb[ executing ].status = STATUS_READY;
 }
 
+//Restore the next process and update its status
 void updateProcess(int executingNext, ctx_t* ctx) {
-  memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) ); // restore next program
-  pcb[ executingNext ].status = STATUS_EXECUTING;            // update next program's status
+  memcpy( ctx, &pcb[ executingNext ].ctx, sizeof( ctx_t ) );
+  pcb[ executingNext ].status = STATUS_EXECUTING;
   executing = executingNext;
 }
 
 void priority_scheduler( ctx_t* ctx ) {
 
-    //If age = priority then do the memcpy stuff and reset the age. If it doesnt then do nothting and just carry on.
+    //If age = priority then schedule the next process, otherwise continue executing current process.
     if ( pcb[ executing ].age == pcb[ executing ].basePriority) {
-
       pcb[ executing ].age = 0;
 
       int executingNext = nextProcess();
-
       saveProcess(ctx);
       updateProcess(executingNext, ctx);
 
-      //PL011_putc( UART0, executing+'0', true );
       return;
     }
     else {
@@ -129,46 +129,10 @@ void hilevel_handler_rst(ctx_t* ctx) {
   pcb[ 0 ].pid      = 1;
   pcb[ 0 ].status   = STATUS_READY;
   pcb[ 0 ].ctx.cpsr = 0x50;
-  pcb[ 0 ].ctx.pc   = ( uint32_t )( &main_console ); ///////
+  pcb[ 0 ].ctx.pc   = ( uint32_t )( &main_console );
   pcb[ 0 ].ctx.sp   = ( uint32_t )( &tos_console );
   pcb[ 0 ].basePriority = 0;
   pcb[ 0 ].age = 0;
-
-  // memset( &pcb[ 1 ], 0, sizeof( pcb_t ) );
-  // pcb[ 1 ].pid      = 2;
-  // pcb[ 1 ].status   = STATUS_READY;
-  // pcb[ 1 ].ctx.cpsr = 0x50;
-  // pcb[ 1 ].ctx.pc   = ( uint32_t )( &main_P4 );
-  // pcb[ 1 ].ctx.sp   = ( uint32_t )( &tos_P4  );
-  // pcb[ 1 ].basePriority = 2;
-  // pcb[ 1 ].age = 0;
-
-  // memset( &pcb[ 1 ], 0, sizeof( pcb_t ) );
-  // pcb[ 1 ].pid      = 2;
-  // pcb[ 1 ].status   = STATUS_READY;
-  // pcb[ 1 ].ctx.cpsr = 0x50;
-  // pcb[ 1 ].ctx.pc   = ( uint32_t )( &main_P4 );
-  // pcb[ 1 ].ctx.sp   = ( uint32_t )( &tos_P4  );
-  // pcb[ 1 ].basePriority = 2;
-  // pcb[ 1 ].age = 0;
-  //
-  // memset( &pcb[ 2 ], 0, sizeof( pcb_t ) );
-  // pcb[ 2 ].pid      = 3;
-  // pcb[ 2 ].status   = STATUS_READY;
-  // pcb[ 2 ].ctx.cpsr = 0x50;
-  // pcb[ 2 ].ctx.pc   = ( uint32_t )( &main_Ptemp );
-  // pcb[ 2 ].ctx.sp   = ( uint32_t )( &tos_Ptemp  );
-  // pcb[ 2 ].basePriority = 1;
-  // pcb[ 2 ].age = 0;
-
-  // memset( &pcb[ 3 ], 0, sizeof( pcb_t ) ); //this is usually pcb2
-  // pcb[ 3 ].pid      = 4;
-  // pcb[ 3 ].status   = STATUS_READY;
-  // pcb[ 3 ].ctx.cpsr = 0x50;
-  // pcb[ 3 ].ctx.pc   = ( uint32_t )( &main_P5 );
-  // pcb[ 3 ].ctx.sp   = ( uint32_t )( &tos_P5  );
-  // pcb[ 3 ].basePriority = 6;
-  // pcb[ 3 ].age = 0;
 
   /* Once the PCBs are initialised, we (arbitrarily) select one to be
    * restored (i.e., executed) when the function then returns.
@@ -195,7 +159,6 @@ void hilevel_handler_irq(ctx_t* ctx) {
     PL011_putc( UART0, 'T', true );
     TIMER0->Timer1IntClr = 0x01;
     priority_scheduler(ctx);
-    //round_robin_scheduler(ctx);
   }
 
   // Step 5: write the interrupt identifier to signal we're done.
@@ -250,33 +213,15 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
       break;
     }
 
- // fork [11, Page 881]:
- //  - create new child process with unique PID,
- //  - replicate state (e.g., address space) of parent in child,
- //  - parent and child both return from fork, and continue to execute after the call point,
- //  - return value is 0 for child, and PID of child for parent.
-
-// Put the ctx back into pcb[executing].ctx
-// Copy pcb[executing] to pcb[new]
-// change pid of pcb[new]
-// find top of stack of parent
-// find offset of ctx.sp into that stack
-// make new stack space for pcb[new]
-// copy tos for parent into pcb[new].sp in full
-// offset the sp for child by correct amount (same as parent)
-// give 0 to child.ctx.gpr[0]
-// give new pid to parent.ctx.gpr[0]
-
     case 0x03 : { //fork
 
       pcb_t* parent = &pcb[executing];
-      pcb_t* child = &pcb[ n ]; //find first available pcb space
+      pcb_t* child = &pcb[ n ];            //n is equivalent to the no. of processes + 1
 
       memcpy( &parent->ctx, ctx, sizeof( ctx_t ) );
 
       memset( child, 0, sizeof(pcb_t));
 
-      //memcpy( &pcb[ n+1 ].ctx, ctx, sizeof( ctx_t ));
       memcpy( child, parent, sizeof(pcb_t));
       child->pid = n + 1;
 
@@ -284,119 +229,71 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
       int offset = (uint32_t) parentTos - parent->ctx.sp;
 
       uint32_t childTos = (uint32_t) &tos_newProcesses-((n)*0x00001000);
-      memcpy((void *) childTos - 0x00001000, (void *) parentTos - 0x00001000, 0x00001000 ); //minus 0x00001000 from childTos and parentTos ??
+      memcpy((void *) childTos - 0x00001000, (void *) parentTos - 0x00001000, 0x00001000 );
       child->ctx.sp = (uint32_t) childTos - offset;
 
       child->status = STATUS_READY;
-
 
       ctx->gpr[ 0 ] = child->pid;
       child->ctx.gpr[ 0 ] = 0;
       n++;
 
       break;
-      //hilevel handler reset is being called!! Something is setting pc/lr to 0 and therefore starting it all over again.
-
-
-      //create new child pcb and copy the values from the parent
-      // memset( &pcb[ n+1 ], 0, sizeof( pcb_t ) );
-      // pcb[ n+1 ].pid      = pcb[ executing ].pid + 1;                      //unique PID but is it a problem for this to be hardcoded>
-      // pcb[ n+1 ].status   = STATUS_READY;
-      // pcb[ n+1 ].ctx.cpsr = pcb[ executing ].ctx.cpsr;
-      // pcb[ n+1 ].ctx.pc   = pcb[ executing ].ctx.pc;
-      // pcb[ n+1 ].ctx.sp   = pcb[ executing ].ctx.sp;
-      // pcb[ n+1 ].basePriority = pcb[ executing ].basePriority;
-      // pcb[ n+1 ].age = pcb[ executing ].age;                           /////////////////////////
-      //
-      // //Copy parents stack to child's stack
-      // memcpy(tos_newProcesses+(n+1)*1000, tos_newProcesses+executing*1000, 0x00001000 ); // 1) top of stack of child, 2)top of stack of parent, 3) size of what im copying
-      // int offset = tos_newProcesses+executing*1000 - pcb[ executing ].ctx.sp; //where the stack pointer is in relation to the top of stack
-      // pcb[n+1].ctx.sp = tos_newProcesses+(n+1)*1000 - offset; //Minus offset so that stack pointer is in same position relative to parent
-      //
-      // //I have made space (tos_newProcesses) for new processes, somehow have to handle that space here. ^^^^
-      //
-      // //  - return value is 0 for child, and PID of child for parent.
-      // parent->ctx.gpr[ 0 ] = child->pid;
-      // child->ctx.gpr[ 0 ] = 0;
-      //
-      // break;
-
-      //The maximum size of pcb is 1!! PROBLEM.
-      //Shell was being printed over and over again.
-
     }
 
     case 0x04 : { //exit
+
       memset( &pcb[ executing ], 0, sizeof( pcb_t ) );
-      pcb[ executing ].status = STATUS_TERMINATED;   //P5 has a limit of 50 therefore calls exit (0x04), handle this.
-      //pcb[ executing ].basePriority = -1;
+      pcb[ executing ].status = STATUS_TERMINATED;
+
+      //Equivalent to calling the scheduler except I *don't* want to save the process
       int executingNext = nextProcess();
-      // i DONT want to saveProcess();
       updateProcess(executingNext, ctx);
+
       break;
     }
-
-
-// EXEC
-// replace current process image (e.g., text segment) with with new process image: effectively this means
-//  execute a new program,
-// reset state (e.g., stack pointer); continue to execute at the entry point of new program,
-// no return, since call point no longer exists
 
      case 0x05 : { //exec
 
        PL011_putc( UART0, 'E', true );
 
-       //memset((uint32_t)&tos_newProcesses-(executing*0x00001000)-0x00001000, 0, 0x00001000);
+       // Replace current process with new process i.e. the argument to exec is an address.
        ctx->pc = ctx->gpr[0];
        ctx->sp = (uint32_t) &tos_newProcesses-(executing*0x00001000);
 
-       // void* main_newprocess = (void *)ctx->gpr[ 0 ];
-       //
-       //
-       // memcpy(&pcb[ executing ].ctx, ctx, sizeof( ctx_t ) ); // preserve process that was executing
-       // pcb[ executing ].status = STATUS_READY;                // update  the status of executing process
-       //
-       // pcb[n+1].ctx.pc = (uint32_t) (main_newprocess);
-       //
-       //
-       //
-       //
-       // memcpy( ctx, &pcb[ n+1].ctx, sizeof( ctx_t ) ); // restore  process to execute
-       // pcb[ n+1 ].status = STATUS_EXECUTING;            // update   the status of the executing process
-       // executing = n+1; //sets the process that is excuting to the new process
-       //
        break;
      }
+
      case 0x06 : { //kill
-       // for process identified by pid, send signal of x
-      int pid = ctx->gpr[0];       //////////this PID is 3! Because I wrote terminate 3
+
+      int pid = ctx->gpr[0];
       for (int i=0;i<n;i++) {
         if (pcb[i].pid == pid) {
           PL011_putc( UART0, 'K', true );
           memset( &pcb[ i ], 0, sizeof( pcb_t ) );
           pcb[ i ].status = STATUS_TERMINATED;
           break;
-          //pcb[ i ].basePriority = -1;
         }
       }
       break;
      }
 
-     case 0x08 : { //SHMGET
+     case 0x08 : { //SHMGET(int x)
+
+       //id is the philospher number
        uint32_t id = (uint32_t) ctx->gpr[0];
 
        int target = -1;
 
        for( int i = 0; i < maxShrm; i++) {
          if ( shrms[i].shmid == id ) {
-           target = i; //target is the position in the stack i.e. 1 - 16
+           target = i;
          }
        }
 
-       //if the region of shared mem doesnt exist yet
+       //If the region of shared memory doesn't exist yet
        if (target == -1) {
-         target = numberOfShrms;
+         target = numberOfShrms; //numberOfShrms equivalent to the next slot in array
          shrms[target].shmid = id;
          shrms[target].tos = (void*) &tos_shrm - (numberOfShrms*1000);
          shrms[target].lock = false;
@@ -405,12 +302,12 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
        }
        else {
          if (shrms[target].lock) {
-           priority_scheduler(ctx); //sorry mate, no luck
+           priority_scheduler(ctx); //No luck! Fork is taken, carry on.
          }
        }
 
        shrms[target].lock = true;
-       ctx->gpr[0] = (uint32_t) shrms[target].tos; //return the position in sharedmem
+       ctx->gpr[0] = (uint32_t) shrms[target].tos; //Return the position in shared memory (not actually being used)
 
        break;
      }
@@ -423,7 +320,7 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
 
        for( int i = 0; i < maxShrm; i++) {
          if ( shrms[i].shmid == id ) {
-           target = i; //target is the position in the stack i.e. 1 - 16
+           target = i;
          }
        }
 
@@ -433,8 +330,6 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
 
        break;
      }
-
-
 
     default   : { // 0x?? => unknown/unsupported
       break;
